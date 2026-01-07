@@ -23,7 +23,7 @@ export default function PredictInference() {
       setResult(null);
 
       const response = await fetch(
-        "http://localhost:8000/api/inference/predict",
+        "http://localhost:8081/api/inference/predict",
         {
           method: "POST",
           body: formData,
