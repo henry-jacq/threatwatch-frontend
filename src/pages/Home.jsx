@@ -69,7 +69,7 @@ export default function Home() {
                 />
 
                 <StatCard
-                    title="PCAP Statistics"
+                    title="PCAP Conversion"
                     value="—"
                     footer="Upload or select a PCAP file"
                 />
