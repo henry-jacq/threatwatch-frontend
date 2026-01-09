@@ -4,6 +4,7 @@ import Home from "./pages/Home";
 import PcapConvert from "./pages/PcapConvert";
 import PredictInference from "./pages/PredictInference";
 import Evaluation from "./pages/Evaluation";
+import About from "./pages/About";
 
 export default function App() {
     return (
@@ -13,6 +14,7 @@ export default function App() {
                 <Route path="/pcap" element={<PcapConvert />} />
                 <Route path="/inference" element={<PredictInference />} />
                 <Route path="/evaluation" element={<Evaluation />} />
+                <Route path="/about" element={<About />} />
             </Routes>
         </BrowserRouter>
     );
