@@ -1,116 +1,171 @@
 import { useState } from "react";
 import DashboardLayout from "../layouts/DashboardLayout";
+import { pcapAPI } from "../services/api";
+
+/* Helpers */
+
+function getFileMeta(file) {
+    if (!file) return null;
+
+    const ext = file.name.split(".").pop().toLowerCase();
+
+    let type = "PCAP";
+    let badge = "bg-emerald-100 text-emerald-700";
+
+    return {
+        name: file.name,
+        size: (file.size / 1024).toFixed(1) + " KB",
+        type,
+        badge,
+    };
+}
+
+/* Page */
 
 export default function PcapConvert() {
     const [file, setFile] = useState(null);
     const [outputName, setOutputName] = useState("converted");
-    const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
     function handleFileChange(e) {
-        const selectedFile = e.target.files[0];
-        if (!selectedFile) return;
+        const f = e.target.files[0];
+        if (!f) return;
 
-        setFile(selectedFile);
-
-        // 🔘 Auto-fill output name from filename (remove extension)
-        const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
-        setOutputName(baseName);
+        setFile(f);
+        setOutputName(f.name.replace(/\.[^/.]+$/, ""));
     }
 
     async function handleSubmit(e) {
         e.preventDefault();
-        if (!file) return;
+        if (!file || loading) return;
 
         setLoading(true);
         setError(null);
-        setResult(null);
 
         try {
-            const formData = new FormData();
-            formData.append("file", file);
+            const blob = await pcapAPI.convert(file, outputName);
 
-            const res = await fetch(
-                `http://localhost:8000/api/pcap/convert?output_name=${encodeURIComponent(outputName)}`,
-                {
-                    method: "POST",
-                    body: formData,
-                }
-            );
-
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail || "PCAP conversion failed");
-            }
-
-            setResult(await res.json());
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${outputName}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
         } catch (err) {
-            setError(err.message);
+            setError(err.message || "PCAP conversion failed");
         } finally {
             setLoading(false);
         }
     }
 
+    const fileMeta = getFileMeta(file);
+
     return (
         <DashboardLayout>
-            <h2 className="text-xl font-semibold mb-4">
+            {/* HEADER */}
+            <h2 className="mb-3 text-xl font-semibold text-slate-900">
                 PCAP Conversion
             </h2>
 
-            <form
-                onSubmit={handleSubmit}
-                className="bg-white p-6 rounded-lg shadow-sm max-w-xl"
-            >
-                {/* Output name */}
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Output CSV Name
-                </label>
-                <input
-                    type="text"
-                    value={outputName}
-                    onChange={(e) => setOutputName(e.target.value)}
-                    className="block w-full mb-4 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+            <p className="mb-6 text-sm text-slate-600">
+                Convert packet capture files into flow-based CSV format for analysis
+                and inference.
+            </p>
 
-                {/* PCAP file */}
-                <input
-                    type="file"
-                    accept=".pcap,.pcapng"
-                    onChange={handleFileChange}
-                    className="block w-full mb-4"
-                />
+            {/* MAIN CARD */}
+            <div className="bg-white border shadow-sm border-slate-200 rounded-xl">
+                <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                    {/* OUTPUT NAME */}
+                    <div className="space-y-1">
+                        <label className="block text-sm font-medium text-slate-700">
+                            Output CSV Name
+                        </label>
+                        <input
+                            value={outputName}
+                            onChange={(e) => setOutputName(e.target.value)}
+                            className="block w-full px-3 py-2 text-sm border rounded-lg border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                            placeholder="converted"
+                        />
+                        <label className="text-xs text-slate-500">
+                            Name of the output CSV file (without extension)
+                        </label>
+                    </div>
 
-                <button
-                    disabled={loading}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
-                >
-                    {loading ? "Processing..." : "Convert PCAP"}
-                </button>
-            </form>
+                    {/* FILE INPUT */}
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-slate-700">
+                            Input PCAP File
+                        </label>
 
-            {error && (
-                <p className="mt-4 text-red-600">
-                    {error}
-                </p>
-            )}
+                        <label className="flex flex-col items-center justify-center w-full px-4 py-6 transition border-2 border-dashed rounded-lg cursor-pointer border-slate-300 bg-slate-50 hover:bg-slate-100">
+                            <input
+                                type="file"
+                                accept=".pcap,.pcapng"
+                                className="hidden"
+                                onChange={handleFileChange}
+                            />
 
-            {result && (
-                <div className="mt-6 max-w-xl">
-                    <pre className="bg-gray-900 text-green-400 p-4 rounded text-sm overflow-x-auto">
-                        {JSON.stringify(result, null, 2)}
-                    </pre>
+                            <div className="text-center">
+                                <p className="text-sm font-medium text-slate-700">
+                                    Click to upload PCAP
+                                </p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                    .pcap or .pcapng files supported
+                                </p>
+                            </div>
+                        </label>
 
-                    {/* 📥 Download button */}
-                    <a
-                        href={`http://localhost:8000/${result.output_file}`}
-                        download
-                        className="inline-block mt-4 px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
-                    >
-                        📥 Download CSV
-                    </a>
-                </div>
-            )}
+                        {/* FILE PREVIEW */}
+                        {fileMeta && (
+                            <div className="flex items-center justify-between p-3 text-sm bg-white border rounded-lg border-slate-200">
+                                <div className="flex items-center gap-3">
+                                    <span
+                                        className={`px-2 py-0.5 text-xs font-medium rounded ${fileMeta.badge}`}
+                                    >
+                                        {fileMeta.type}
+                                    </span>
+
+                                    <div>
+                                        <p className="font-medium text-slate-900 truncate max-w-[220px]">
+                                            {fileMeta.name}
+                                        </p>
+                                        <p className="text-xs text-slate-500">
+                                            {fileMeta.size}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setFile(null)}
+                                    className="text-xs text-slate-500 hover:text-slate-700 hover:cursor-pointer"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ACTIONS */}
+                    <div className="flex gap-3">
+                        <button
+                            type="submit"
+                            disabled={loading || !file}
+                            className="px-4 py-2 text-sm font-medium text-white transition rounded-lg bg-slate-900 disabled:opacity-50 hover:bg-slate-800 hover:disabled:cursor-not-allowed hover:cursor-pointer"
+                        >
+                            {loading ? "Converting…" : "Convert & Download CSV"}
+                        </button>
+                    </div>
+
+                    {/* ERROR */}
+                    {error && (
+                        <div className="p-3 text-sm text-red-700 border border-red-200 rounded-lg bg-red-50">
+                            {error}
+                        </div>
+                    )}
+                </form>
+            </div>
         </DashboardLayout>
     );
 }

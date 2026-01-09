@@ -1,47 +1,73 @@
-const RAW_BASE = import.meta.env.VITE_API_BASE || "";
-const BASE_URL = RAW_BASE.replace(/\/+$/, "");
+const BASE = import.meta.env.VITE_API_BASE.replace(/\/$/, "");
 
-async function apiFetch(path, options = {}) {
-    const res = await fetch(`${BASE_URL}${path}`, {
-        headers: {
-            "Content-Type": "application/json",
-        },
-        ...options,
+async function jsonFetch(path) {
+    const res = await fetch(`${BASE}${path}`);
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "API error");
+    }
+    return res.json();
+}
+
+async function formFetch(path, formData) {
+    const res = await fetch(`${BASE}${path}`, {
+        method: "POST",
+        body: formData,
     });
 
     if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
+        const err = await res.json();
+        throw new Error(err.detail || "API error");
     }
-
     return res.json();
 }
 
 export const inferenceAPI = {
-    health: () => apiFetch("/api/inference/health"),
-    stats: () => apiFetch("/api/inference/stats"),
-    predict: (payload) =>
-        apiFetch("/api/inference/predict", {
+    health: () => jsonFetch("/api/inference/health"),
+    status: () => jsonFetch("/api/inference/status"),
+
+    models: () => jsonFetch("/api/inference/models"),
+    activeModel: () => jsonFetch("/api/inference/models/active"),
+
+    switchModel: (modelId) =>
+        fetch(`${BASE}/api/inference/models/${modelId}`, {
             method: "POST",
-            body: JSON.stringify(payload),
+        }).then((r) => {
+            if (!r.ok) throw new Error("Model switch failed");
+            return r.json();
         }),
-    evaluate: (payload) =>
-        apiFetch("/api/inference/evaluate", {
-            method: "POST",
-            body: JSON.stringify(payload),
-        }),
+
+    predictCSV: (file) => {
+        const fd = new FormData();
+        fd.append("file", file);
+        return formFetch("/api/inference/predict", fd);
+    },
+
+    predictPCAP: (file) => {
+        const fd = new FormData();
+        fd.append("file", file);
+        return formFetch("/api/inference/predict/pcap", fd);
+    },
+
+    evaluate: (file) => {
+        const fd = new FormData();
+        fd.append("file", file);
+        return formFetch("/api/inference/evaluate", fd);
+    },
 };
 
 export const pcapAPI = {
-    stats: (csvFile) =>
-        apiFetch(`/api/pcap/stats?csv_file=${encodeURIComponent(csvFile)}`),
+    convert: async (file, outputName) => {
+        const fd = new FormData();
+        fd.append("file", file);
 
-    convert: (formData) =>
-        fetch(`${BASE_URL}/api/pcap/convert`, {
-            method: "POST",
-            body: formData,
-        }).then((r) => {
-            if (!r.ok) throw new Error("PCAP convert failed");
-            return r.json();
-        }),
+        const res = await fetch(
+            `${BASE}/api/pcap/convert?output_name=${encodeURIComponent(outputName)}`,
+            { method: "POST", body: fd }
+        );
+
+        if (!res.ok) throw new Error("PCAP conversion failed");
+
+        return res.blob();
+    },
 };
-

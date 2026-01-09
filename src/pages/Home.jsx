@@ -5,7 +5,8 @@ import { inferenceAPI } from "../services/api";
 
 export default function Home() {
     const [health, setHealth] = useState(null);
-    const [stats, setStats] = useState(null);
+    const [status, setStatus] = useState(null);
+
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -14,23 +15,21 @@ export default function Home() {
 
         async function load() {
             try {
-                const [healthRes, statsRes] = await Promise.all([
+                const [h, s] = await Promise.all([
                     inferenceAPI.health(),
-                    inferenceAPI.stats(),
+                    inferenceAPI.status(),
                 ]);
 
                 if (!cancelled) {
-                    setHealth(healthRes);
-                    setStats(statsRes);
+                    setHealth(h);
+                    setStatus(s);
                 }
             } catch (err) {
                 if (!cancelled) {
-                    setError(err.message || "Failed to load dashboard data");
+                    setError(err.message || "Failed to load inference status");
                 }
             } finally {
-                if (!cancelled) {
-                    setLoading(false);
-                }
+                if (!cancelled) setLoading(false);
             }
         }
 
@@ -40,63 +39,130 @@ export default function Home() {
         };
     }, []);
 
+    const ready = status?.ready === true;
+
     return (
         <DashboardLayout>
+            {/* PAGE HEADER */}
+            <div className="mb-6">
+                <h2 className="mb-2 text-xl font-semibold text-slate-900">
+                    Inference Dashboard
+                </h2>
+                <p className="text-sm text-slate-500">
+                    Service health and active model status
+                </p>
+            </div>
+
             {error && (
-                <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
+                <div className="p-4 mb-6 text-sm text-red-700 border border-red-200 rounded-lg bg-red-50">
                     {error}
                 </div>
             )}
 
             {/* KPI CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
-                    title="System Health"
-                    value={health?.status ?? (loading ? "Loading…" : "—")}
-                    footer="Inference Engine"
+                    title="Service Alive"
+                    value={
+                        health?.alive
+                            ? "Yes"
+                            : loading
+                                ? "Checking…"
+                                : "No"
+                    }
+                    footer="Process liveness probe"
                 />
 
                 <StatCard
-                    title="Total Predictions"
-                    value={stats?.total_predictions ?? (loading ? "Loading…" : "—")}
-                    footer="From inference stats"
+                    title="Inference Ready"
+                    value={
+                        ready
+                            ? "Ready"
+                            : loading
+                                ? "Checking…"
+                                : "Not Ready"
+                    }
+                    footer="Model loaded & usable"
                 />
 
                 <StatCard
-                    title="Detected Attacks"
-                    value={stats?.attack_count ?? (loading ? "Loading…" : "—")}
-                    footer="All classes"
+                    title="Active Model"
+                    value={
+                        status?.model?.name ??
+                        (loading ? "Loading…" : "—")
+                    }
+                    footer={`ID: ${status?.model?.model_id ?? "—"}`}
                 />
 
                 <StatCard
-                    title="PCAP Conversion"
-                    value="—"
-                    footer="Upload or select a PCAP file"
+                    title="Execution Device"
+                    value={
+                        status?.device ??
+                        (loading ? "Loading…" : "—")
+                    }
+                    footer={
+                        status?.cuda_available
+                            ? "CUDA Enabled"
+                            : "CPU Only"
+                    }
                 />
             </div>
 
-            {/* INFERENCE BREAKDOWN */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-lg shadow-sm">
-                    <h3 className="text-lg font-semibold mb-4">
-                        Attack Distribution
-                    </h3>
+            {/* DETAILS */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {/* MODEL DETAILS */}
+                <Panel title="Model Details">
+                    <Item
+                        label="Loaded"
+                        value={status?.model?.loaded ? "Yes" : "No"}
+                    />
+                    <Item
+                        label="Hidden Size"
+                        value={status?.model?.hidden_size}
+                    />
+                    <Item
+                        label="Feature Count"
+                        value={status?.model?.feature_count}
+                    />
+                </Panel>
 
-                    <pre className="text-sm bg-gray-50 p-4 rounded overflow-auto">
-                        {JSON.stringify(stats?.attack_distribution ?? {}, null, 2)}
-                    </pre>
-                </div>
-
-                <div className="bg-white p-6 rounded-lg shadow-sm">
-                    <h3 className="text-lg font-semibold mb-4">
-                        Inference Stats (Raw)
-                    </h3>
-
-                    <pre className="text-sm bg-gray-900 text-green-400 p-4 rounded overflow-auto">
-                        {stats ? JSON.stringify(stats, null, 2) : "—"}
-                    </pre>
-                </div>
+                {/* RUNTIME DETAILS */}
+                <Panel title="Runtime">
+                    <Item label="Device" value={status?.device} />
+                    <Item
+                        label="CUDA Available"
+                        value={
+                            status?.cuda_available ? "Yes" : "No"
+                        }
+                    />
+                </Panel>
             </div>
         </DashboardLayout>
+    );
+}
+
+/* ------------------------------------------------------------ */
+
+function Panel({ title, children }) {
+    return (
+        <div className="bg-white border shadow-sm border-slate-200 rounded-xl">
+            <div className="p-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+                    {title}
+                </h3>
+                <dl className="space-y-3 text-sm">{children}</dl>
+            </div>
+        </div>
+    );
+}
+
+function Item({ label, value }) {
+    return (
+        <div className="flex justify-between gap-4">
+            <dt className="text-slate-500">{label}</dt>
+            <dd className="font-medium text-slate-900">
+                {value ?? "—"}
+            </dd>
+        </div>
     );
 }
