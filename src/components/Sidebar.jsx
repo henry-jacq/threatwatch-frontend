@@ -5,6 +5,7 @@ const items = [
     { label: "Live Inference", path: "/inference" },
     { label: "PCAP Analysis", path: "/pcap" },
     { label: "Model Evaluation", path: "/evaluation" },
+    { label: "Lab Simulation", path: "/lab" },
     { label: "About", path: "/about" }
 ];
 

@@ -1,4 +1,5 @@
-const BASE = import.meta.env.VITE_API_BASE.replace(/\/$/, "");
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+const BASE = API_BASE.replace(/\/$/, "");
 
 async function jsonFetch(path) {
     const res = await fetch(`${BASE}${path}`);
@@ -70,4 +71,69 @@ export const pcapAPI = {
 
         return res.blob();
     },
+};
+
+export const labAPI = {
+    status: () => jsonFetch("/api/lab/status"),
+    streamStatus: (onMessage, onError, onOpen) => {
+        const es = new EventSource(`${BASE}/api/lab/stream`);
+        es.onopen = () => {
+            if (onOpen) onOpen();
+        };
+        es.onmessage = (evt) => {
+            try {
+                onMessage(JSON.parse(evt.data));
+            } catch {
+                // Ignore malformed frames.
+            }
+        };
+        es.onerror = (evt) => {
+            if (onError) onError(evt);
+        };
+        return es;
+    },
+
+    startAttack: (type = "syn") =>
+        fetch(`${BASE}/api/lab/attack/start?type=${type}`, {
+            method: "POST",
+        }).then(async (r) => {
+            const body = await r.json();
+            if (!r.ok) {
+                throw new Error(body?.detail?.error || "Failed to start attack");
+            }
+            return body;
+        }),
+
+    stopAttack: () =>
+        fetch(`${BASE}/api/lab/attack/stop`, {
+            method: "POST",
+        }).then(async (r) => {
+            const body = await r.json();
+            if (!r.ok) {
+                throw new Error(body?.detail?.error || "Failed to stop attack");
+            }
+            return body;
+        }),
+
+    startTraffic: (type = "mixed") =>
+        fetch(`${BASE}/api/lab/traffic/start?type=${type}`, {
+            method: "POST",
+        }).then(async (r) => {
+            const body = await r.json();
+            if (!r.ok) {
+                throw new Error(body?.detail?.error || "Failed to start normal traffic");
+            }
+            return body;
+        }),
+
+    stopTraffic: () =>
+        fetch(`${BASE}/api/lab/traffic/stop`, {
+            method: "POST",
+        }).then(async (r) => {
+            const body = await r.json();
+            if (!r.ok) {
+                throw new Error(body?.detail?.error || "Failed to stop normal traffic");
+            }
+            return body;
+        }),
 };
