@@ -11,6 +11,9 @@ export default function LiveLab() {
     const [attackType, setAttackType] = useState("udp");
     const [attackIntensity, setAttackIntensity] = useState("medium");
     const [trafficType, setTrafficType] = useState("mixed");
+    const [attackPpsInput, setAttackPpsInput] = useState("");
+    const [attackIntervalMsInput, setAttackIntervalMsInput] = useState("");
+    const [trafficIntervalMsInput, setTrafficIntervalMsInput] = useState("");
     const [attackerCountInput, setAttackerCountInput] = useState("1");
     const [attackersDirty, setAttackersDirty] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -165,7 +168,17 @@ export default function LiveLab() {
         try {
             setLoading(true);
             setError(null);
-            await labAPI.startAttack(attackType, attackIntensity);
+            const pps = attackPpsInput.trim() === "" ? null : Number(attackPpsInput);
+            const intervalMs = attackIntervalMsInput.trim() === "" ? null : Number(attackIntervalMsInput);
+            const opts = {};
+            if (attackType === "http" && intervalMs != null && Number.isFinite(intervalMs)) {
+                opts.interval_ms = Math.max(0, Math.floor(intervalMs));
+            }
+            if (attackType !== "http" && pps != null && Number.isFinite(pps)) {
+                opts.pps = Math.max(1, Math.floor(pps));
+            }
+
+            await labAPI.startAttack(attackType, attackIntensity, opts);
             await loadStatus();
             pushToast({
                 type: "success",
@@ -243,7 +256,12 @@ export default function LiveLab() {
         try {
             setLoading(true);
             setError(null);
-            await labAPI.startTraffic(trafficType);
+            const intervalMs = trafficIntervalMsInput.trim() === "" ? null : Number(trafficIntervalMsInput);
+            const opts = {};
+            if (intervalMs != null && Number.isFinite(intervalMs)) {
+                opts.interval_ms = Math.max(0, Math.floor(intervalMs));
+            }
+            await labAPI.startTraffic(trafficType, "medium", opts);
             await loadStatus();
             pushToast({
                 type: "success",
@@ -354,178 +372,286 @@ export default function LiveLab() {
                 />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 mb-6 text-xs text-slate-600">
-                <span
-                    className={`px-2 py-1 border rounded-full ${
-                        streamConnected
-                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                            : "bg-slate-50 text-slate-700 border-slate-200"
-                    }`}
-                >
-                    SSE: {streamConnected ? "connected" : "reconnecting"}
-                </span>
-                <span className="px-2 py-1 border rounded-full bg-slate-50 text-slate-700 border-slate-200">
-                    Status poll:{" "}
-                    {lastStatusOkAtMs
-                        ? `${Math.max(0, Math.round((nowMs - lastStatusOkAtMs) / 1000))}s ago`
-                        : "never"}
-                </span>
-                {status?.consumer?.connected === false && (
-                    <span className="px-2 py-1 border rounded-full bg-amber-50 text-amber-800 border-amber-200">
-                        Inference consumer disconnected
-                    </span>
-                )}
-            </div>
-
             {/* LAB CONTROL */}
             <div className="p-6 bg-white border shadow-sm border-slate-200 rounded-xl">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
-                    Controlled Lab Simulation
-                </h3>
-
-                <div className="p-4 mb-6 border rounded-lg border-slate-200 bg-slate-50">
-                    <p className="text-xs font-semibold text-slate-600">
-                        Lab Topology
-                    </p>
-                    <div className="flex flex-wrap items-end gap-3 mt-3">
-                        <div>
-                            <label className="text-xs font-medium text-slate-500">Attackers</label>
-                            <input
-                                type="number"
-                                min={1}
-                                max={10}
-                                step={1}
-                                value={attackerCountInput}
-                                onChange={(e) => {
-                                    setAttackerCountInput(e.target.value);
-                                    setAttackersDirty(true);
-                                }}
-                                disabled={loading}
-                                className="block w-28 px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-text disabled:cursor-not-allowed"
-                            />
-                        </div>
-                        <button
-                            onClick={applyAttackers}
-                            disabled={loading || !attackersDirty}
-                            className="px-4 py-2 text-sm font-medium text-white rounded-lg cursor-pointer bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                <div className="flex items-center justify-between">
+                    <h3 className="mb-4 text-base font-semibold text-slate-900">
+                        Control Panel
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-2 mb-6 text-xs text-slate-600">
+                        <span
+                            className={`px-2 py-1 border rounded-full ${streamConnected
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                : "bg-slate-50 text-slate-700 border-slate-200"
+                                }`}
                         >
-                            Apply
-                        </button>
-                        <span className="text-xs text-slate-500">
-                            More attackers simulates distributed sources (traffic and attacks run from all attackers).
+                            SSE: {streamConnected ? "connected" : "reconnecting"}
                         </span>
+                        <span className="px-2 py-1 border rounded-full bg-slate-50 text-slate-700 border-slate-200">
+                            Status poll:{" "}
+                            {lastStatusOkAtMs
+                                ? `${Math.max(0, Math.round((nowMs - lastStatusOkAtMs) / 1000))}s ago`
+                                : "never"}
+                        </span>
+                        {status?.consumer?.connected === false && (
+                            <span className="px-2 py-1 border rounded-full bg-amber-50 text-amber-800 border-amber-200">
+                                Inference consumer disconnected
+                            </span>
+                        )}
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    <div className="p-4 border rounded-lg border-slate-200">
-                        <p className="text-xs font-semibold text-slate-600">
-                            Normal Traffic Generator
-                        </p>
+                    <div className="grid grid-cols-1 gap-6">
+                        <div className="p-4 border rounded-xl border-slate-200 bg-slate-50">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold tracking-wide text-slate-700">
+                                        Lab Topology
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                        Traffic and attacks run from all attacker containers.
+                                    </p>
+                                </div>
+                                <span className="px-2 py-1 text-[11px] font-semibold border rounded-full bg-white text-slate-700 border-slate-200">
+                                    {status?.attacker_running_count ?? 0}/{status?.attacker_count ?? 1} online
+                                </span>
+                            </div>
 
-                        <div className="flex gap-3 mt-3">
-                            <button
-                                onClick={startTraffic}
-                                disabled={status?.traffic_running || loading}
-                                className="px-4 py-2 text-sm font-medium text-white rounded-lg cursor-pointer bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Start Traffic
-                            </button>
-
-                            <button
-                                onClick={stopTraffic}
-                                disabled={!status?.traffic_running || loading}
-                                className="px-4 py-2 text-sm font-medium rounded-lg cursor-pointer text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Stop Traffic
-                            </button>
+                            <div className="flex flex-wrap items-end gap-3 mt-4">
+                                <div>
+                                    <label className="text-xs font-medium text-slate-600">Attackers</label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={10}
+                                        step={1}
+                                        value={attackerCountInput}
+                                        onChange={(e) => {
+                                            setAttackerCountInput(e.target.value);
+                                            setAttackersDirty(true);
+                                        }}
+                                        disabled={loading}
+                                        className="block px-3 py-2 mt-1 text-sm bg-white border rounded-lg w-28 border-slate-300 cursor-text disabled:cursor-not-allowed"
+                                    />
+                                </div>
+                                <button
+                                    onClick={applyAttackers}
+                                    disabled={loading || !attackersDirty}
+                                    className="px-4 py-2 text-sm font-medium text-white rounded-lg cursor-pointer bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Apply
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="mt-3">
-                            <label className="text-xs font-medium text-slate-500">Traffic Type</label>
-                            <select
-                                value={trafficType}
-                                onChange={(e) => setTrafficType(e.target.value)}
-                                disabled={status?.traffic_running || loading}
-                                className="block px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-pointer disabled:cursor-not-allowed"
-                            >
-                                <option value="cic_benign">CICDDoS2019-like Benign Mix</option>
-                                <option value="mixed">Mixed (HTTP + Ping)</option>
-                                <option value="http">HTTP Only</option>
-                                <option value="ping">Ping Only</option>
-                            </select>
-                        </div>
+                        <div className="p-4 border rounded-xl border-slate-200">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold tracking-wide text-slate-700">
+                                        Normal Traffic
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-slate-500">
+                                        Baseline traffic to validate drift and false positives.
+                                    </p>
+                                </div>
+                                <span
+                                    className={`px-2 py-1 text-[11px] font-semibold border rounded-full ${
+                                        status?.traffic_running
+                                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                            : "bg-slate-50 text-slate-700 border-slate-200"
+                                    }`}
+                                >
+                                    {status?.traffic_running ? "Running" : "Stopped"}
+                                </span>
+                            </div>
 
-                        {status?.traffic_running && (
-                            <p className="mt-3 text-sm text-slate-700">
-                                Traffic running ({status?.traffic_type})
-                            </p>
-                        )}
+                            <div className="grid grid-cols-1 gap-3 mt-4 sm:grid-cols-2">
+                                <div className="sm:col-span-2">
+                                    <label className="text-xs font-medium text-slate-600">Traffic Profile</label>
+                                    <select
+                                        value={trafficType}
+                                        onChange={(e) => setTrafficType(e.target.value)}
+                                        disabled={status?.traffic_running || loading}
+                                        className="block w-full px-3 py-2 mt-1 text-sm bg-white border rounded-lg cursor-pointer border-slate-300 disabled:cursor-not-allowed"
+                                    >
+                                        <option value="cic_benign">CICDDoS2019-like Benign Mix</option>
+                                        <option value="mixed">Mixed (HTTP + Ping)</option>
+                                        <option value="http">HTTP Only</option>
+                                        <option value="ping">Ping Only</option>
+                                    </select>
+                                </div>
+
+                                <details className="sm:col-span-2">
+                                    <summary className="text-sm cursor-pointer text-slate-700">
+                                        Advanced (Optional)
+                                    </summary>
+                                    <div className="grid grid-cols-1 gap-3 mt-3 sm:grid-cols-2">
+                                        <div>
+                                            <label className="text-xs font-medium text-slate-600">Interval (ms)</label>
+                                            <input
+                                                value={trafficIntervalMsInput}
+                                                onChange={(e) => setTrafficIntervalMsInput(e.target.value)}
+                                                disabled={status?.traffic_running || loading}
+                                                placeholder="leave blank for default"
+                                                inputMode="numeric"
+                                                className="block w-full px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-text disabled:cursor-not-allowed"
+                                            />
+                                            <p className="mt-0.5 text-[11px] text-slate-500">
+                                                Lower values increase request rate. This is a numeric field (not a slider).
+                                            </p>
+                                        </div>
+                                    </div>
+                                </details>
+                            </div>
+
+                            <div className="flex flex-wrap gap-3 mt-4">
+                                <button
+                                    onClick={startTraffic}
+                                    disabled={status?.traffic_running || loading}
+                                    className="px-4 py-2 text-sm font-medium text-white rounded-lg cursor-pointer bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Start
+                                </button>
+
+                                <button
+                                    onClick={stopTraffic}
+                                    disabled={!status?.traffic_running || loading}
+                                    className="px-4 py-2 text-sm font-medium rounded-lg cursor-pointer text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Stop
+                                </button>
+
+                                {status?.traffic_running && (
+                                    <span className="px-2 py-1 text-xs border rounded-full bg-slate-50 text-slate-700 border-slate-200">
+                                        Active on {status?.traffic_running_attackers ?? "—"} attackers
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="p-4 border rounded-lg border-slate-200">
-                        <p className="text-xs font-semibold text-slate-600">
-                            Malicious Traffic Generator
-                        </p>
+                    <div className="p-4 border rounded-xl border-slate-200">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <p className="text-xs font-semibold tracking-wide text-slate-700">
+                                    Attack Traffic
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-500">
+                                    CICDDoS2019-style attack families (UDP services + HTTP).
+                                </p>
+                            </div>
+                            <span
+                                className={`px-2 py-1 text-[11px] font-semibold border rounded-full ${
+                                    status?.attack_running
+                                        ? "bg-red-50 text-red-700 border-red-200"
+                                        : "bg-slate-50 text-slate-700 border-slate-200"
+                                }`}
+                            >
+                                {status?.attack_running ? "Running" : "Stopped"}
+                            </span>
+                        </div>
 
-                        <div className="flex gap-3 mt-3">
-                    <button
-                        onClick={startAttack}
-                        disabled={status?.attack_running || loading}
-                        className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg cursor-pointer hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        Start Attack
-                    </button>
+                        <div className="grid grid-cols-1 gap-3 mt-4">
+                            <div>
+                                <label className="text-xs font-medium text-slate-600">Attack Type</label>
+                                <select
+                                    value={attackType}
+                                    onChange={(e) => {
+                                        setAttackType(e.target.value);
+                                        // Clear irrelevant overrides when switching.
+                                        setAttackPpsInput("");
+                                        setAttackIntervalMsInput("");
+                                    }}
+                                    disabled={status?.attack_running || loading}
+                                    className="block w-full px-3 py-2 mt-1 text-sm bg-white border rounded-lg cursor-pointer border-slate-300 disabled:cursor-not-allowed"
+                                >
+                                    <option value="udp">UDP Flood</option>
+                                    <option value="dns">DNS Flood (UDP/53)</option>
+                                    <option value="ntp">NTP Flood (UDP/123)</option>
+                                    <option value="ssdp">SSDP Flood (UDP/1900)</option>
+                                    <option value="http">HTTP Flood</option>
+                                </select>
+                            </div>
 
-                    <button
-                        onClick={stopAttack}
-                        disabled={!status?.attack_running || loading}
-                        className="px-4 py-2 text-sm font-medium rounded-lg cursor-pointer text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        Stop Attack
-                    </button>
-                </div>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label className="text-xs font-medium text-slate-600">Load Preset</label>
+                                    <select
+                                        value={attackIntensity}
+                                        onChange={(e) => setAttackIntensity(e.target.value)}
+                                        disabled={status?.attack_running || loading}
+                                        className="block w-full px-3 py-2 mt-1 text-sm bg-white border rounded-lg cursor-pointer border-slate-300 disabled:cursor-not-allowed"
+                                    >
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                    </select>
+                                </div>
 
-                <div className="mt-3">
-                    <label className="text-xs font-medium text-slate-500">Attack Type</label>
-                    <select
-                        value={attackType}
-                        onChange={(e) => setAttackType(e.target.value)}
-                        disabled={status?.attack_running || loading}
-                        className="block px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                        <option value="udp">UDP Flood</option>
-                        <option value="dns">DNS Flood (UDP/53)</option>
-                        <option value="ntp">NTP Flood (UDP/123)</option>
-                        <option value="ssdp">SSDP Flood (UDP/1900)</option>
-                        <option value="http">HTTP Flood</option>
-                    </select>
-                </div>
+                                {attackType === "http" ? (
+                                    <div>
+                                        <label className="text-xs font-medium text-slate-600">HTTP Interval (ms)</label>
+                                        <input
+                                            value={attackIntervalMsInput}
+                                            onChange={(e) => setAttackIntervalMsInput(e.target.value)}
+                                            disabled={status?.attack_running || loading}
+                                            placeholder="optional override"
+                                            inputMode="numeric"
+                                            className="block w-full px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-text disabled:cursor-not-allowed"
+                                        />
+                                        <p className="mt-0.5 text-[11px] text-slate-500">
+                                            Lower interval increases HTTP request rate.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="text-xs font-medium text-slate-600">Packets/sec (PPS)</label>
+                                        <input
+                                            value={attackPpsInput}
+                                            onChange={(e) => setAttackPpsInput(e.target.value)}
+                                            disabled={status?.attack_running || loading}
+                                            placeholder="optional override"
+                                            inputMode="numeric"
+                                            className="block w-full px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-text disabled:cursor-not-allowed"
+                                        />
+                                        <p className="mt-0.5 text-[11px] text-slate-500">
+                                            Higher PPS increases packet rate across all attackers.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
-                <div className="mt-3">
-                    <label className="text-xs font-medium text-slate-500">Attack Load</label>
-                    <select
-                        value={attackIntensity}
-                        onChange={(e) => setAttackIntensity(e.target.value)}
-                        disabled={status?.attack_running || loading}
-                        className="block px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                    </select>
-                </div>
+                        <div className="flex flex-wrap gap-3 mt-4">
+                            <button
+                                onClick={startAttack}
+                                disabled={status?.attack_running || loading}
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg cursor-pointer hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Start
+                            </button>
 
-                {status?.attack_running && (
-                    <p className="mt-4 text-sm text-red-600">
-                        Attack running ({status?.attack_type?.toUpperCase()}, {status?.attack_intensity || "medium"}) — agent capturing live packets
-                    </p>
-                )}
-                {!status?.attack_running && status?.agent && !status?.agent_capturing && (
-                    <p className="mt-4 text-sm text-amber-600">
-                        Agent is online but no recent captured packets detected.
-                    </p>
-                )}
+                            <button
+                                onClick={stopAttack}
+                                disabled={!status?.attack_running || loading}
+                                className="px-4 py-2 text-sm font-medium rounded-lg cursor-pointer text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Stop
+                            </button>
+
+                            {status?.attack_running && (
+                                <span className="px-2 py-1 text-xs text-red-700 border border-red-200 rounded-full bg-red-50">
+                                    Active on {status?.attack_running_attackers ?? "—"} attackers
+                                </span>
+                            )}
+                        </div>
+
+                        {!status?.attack_running && status?.agent && !status?.agent_capturing && (
+                            <p className="mt-4 text-sm text-amber-600">
+                                Agent is online but no recent captured packets detected.
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>
@@ -551,7 +677,7 @@ export default function LiveLab() {
                     return (
                         <div className="p-4 text-sm border rounded-lg text-slate-600 border-slate-200 bg-slate-50">
                             Waiting for inference...
-                            <span className="block mt-1 text-xs text-slate-500">
+                            <span className="block mt-0.5 text-xs text-slate-500">
                                 {expired
                                     ? `Last inference update was ${ageS}s ago (expired).`
                                     : status?.traffic_stream
@@ -581,19 +707,65 @@ export default function LiveLab() {
                 <h3 className="mb-2 text-sm font-semibold text-slate-900">
                     Debug (Redis + Capture)
                 </h3>
-                <p className="mb-4 text-xs text-slate-500">
-                    Redis has data: {status?.redis_debug?.has_data ? "yes" : "no"} | stream size: {status?.redis_debug?.stream_length ?? 0}
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mb-4 text-xs text-slate-600">
+                    <span className="px-2 py-1 text-[11px] font-semibold border rounded-full bg-slate-50 text-slate-700 border-slate-200">
+                        Redis: {status?.redis_debug?.has_data ? "has data" : "empty"}
+                    </span>
+                    <span className="px-2 py-1 text-[11px] font-semibold border rounded-full bg-slate-50 text-slate-700 border-slate-200">
+                        Stream size: {status?.redis_debug?.stream_length ?? 0}
+                    </span>
+                    <span className="px-2 py-1 text-[11px] font-semibold border rounded-full bg-slate-50 text-slate-700 border-slate-200">
+                        Total attackers: {status?.attacker_names?.length ?? 0}
+                    </span>
+                </div>
                 {status?.attacker_names?.length > 0 && (
-                    <p className="mb-4 text-xs text-slate-500">
-                        Attackers: {status.attacker_names.join(", ")}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2 mb-4 text-xs text-slate-600">
+                        {status?.consumer?.last_error && (
+                            <span className="px-2 py-1 text-red-700 border border-red-200 rounded bg-red-50">
+                                Consumer error: {String(status.consumer.last_error)}
+                            </span>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                            {status.attacker_names.map((name, idx) => (
+                                <span
+                                    key={name}
+                                    className="px-2 py-1 font-mono text-[11px] border rounded-full bg-white text-slate-700 border-slate-200"
+                                >
+                                    A{idx + 1}: {name}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
                 )}
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div>
-                        <p className="mb-2 text-xs font-semibold text-slate-700">
-                            Redis + Consumer Snapshot
+                        <p className="mb-4 text-xs font-semibold text-slate-700">
+                            Debug Info and Metrics (Redis and Consumer)
                         </p>
+                        <div className="flex flex-wrap gap-2 mb-3 text-xs text-slate-600">
+                            <span
+                                className={`px-2 py-1 text-[11px] font-semibold border rounded-full ${
+                                    status?.redis && status?.consumer?.connected
+                                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                        : "bg-red-50 text-red-700 border-red-200"
+                                }`}
+                            >
+                                {status?.redis && status?.consumer?.connected ? "Connected" : "Disconnected"}
+                            </span>
+
+                            <span className="px-2 py-1 text-[11px] font-semibold border rounded-full bg-slate-50 text-slate-700 border-slate-200">
+                                Ingest: {status?.redis_debug?.latest_flow_count ?? 0} flows
+                                {status?.redis_debug?.latest_unique_source_count != null
+                                    ? ` (${status.redis_debug.latest_unique_source_count} sources)`
+                                    : ""}
+                            </span>
+
+                            <span className="px-2 py-1 text-[11px] font-semibold border rounded-full bg-slate-50 text-slate-700 border-slate-200">
+                                Consumed: {status?.redis_debug?.latest_payload_age_s != null
+                                    ? ` (${Math.round(status.redis_debug.latest_payload_age_s)}s ago)`
+                                    : ""}
+                            </span>
+                        </div>
                         <div className="h-56 p-4 overflow-y-auto font-mono text-xs rounded-lg text-cyan-300 bg-slate-900">
                             {status?.redis_debug
                                 ? JSON.stringify(status.redis_debug, null, 2)
@@ -601,9 +773,23 @@ export default function LiveLab() {
                         </div>
                     </div>
                     <div>
-                        <p className="mb-2 text-xs font-semibold text-slate-700">
+                        <p className="mb-3 text-xs font-semibold text-slate-700">
                             Latest Flow Sample (from last payload)
                         </p>
+                        {(status?.redis_debug?.latest_unique_source_count != null) && (
+                            <div className="mb-2 text-xs text-slate-600">
+                                Incoming sources (unique Source IPs in last payload):{" "}
+                                <span className="font-semibold tabular-nums text-slate-800">
+                                    {status.redis_debug.latest_unique_source_count}
+                                </span>
+                                {Array.isArray(status?.redis_debug?.latest_unique_source_sample) &&
+                                    status.redis_debug.latest_unique_source_sample.length > 0 && (
+                                        <span className="block mt-0.5 text-[11px] text-slate-500">
+                                            Sample: {status.redis_debug.latest_unique_source_sample.join(", ")}
+                                        </span>
+                                    )}
+                            </div>
+                        )}
                         <div className="h-56 p-4 overflow-y-auto font-mono text-xs rounded-lg text-fuchsia-300 bg-slate-900">
                             {status?.redis_debug?.latest_flow_sample
                                 ? JSON.stringify(status.redis_debug.latest_flow_sample, null, 2)
@@ -735,7 +921,7 @@ function LiveInferenceCard({ result, nowMs }) {
                         <span className="text-xs font-normal text-slate-500">(thr {pct(thr)})</span>
                     </p>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-0.5 text-xs text-slate-500">
                         {dt ? dt.toLocaleString() : "Unknown time"}
                         {ageS != null ? ` (${ageS}s ago)` : ""}
                     </p>
@@ -906,7 +1092,7 @@ function ArchitectureDiagram({ status }) {
                 <summary className="text-sm cursor-pointer text-slate-700">
                     What to expect when testing
                 </summary>
-                <div className="p-4 mt-3 text-sm border rounded-xl border-slate-200 bg-white text-slate-700">
+                <div className="p-4 mt-3 text-sm bg-white border rounded-xl border-slate-200 text-slate-700">
                     <p className="text-xs text-slate-500">
                         Typical workflow:
                     </p>
@@ -928,7 +1114,7 @@ function MiniNode({ title, meta, left }) {
             <div className="mt-0.5">{left}</div>
             <div>
                 <p className="text-sm font-semibold text-slate-900">{title}</p>
-                <p className="mt-1 text-xs text-slate-500">{meta}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{meta}</p>
             </div>
         </div>
     );
@@ -946,7 +1132,7 @@ function MiniArrow({ label }) {
 function Step({ n, text }) {
     return (
         <div className="flex items-start gap-3 p-3 border rounded-lg border-slate-200 bg-slate-50">
-            <span className="inline-flex items-center justify-center w-6 h-6 text-xs font-semibold text-slate-800 bg-white border border-slate-200 rounded-full tabular-nums">
+            <span className="inline-flex items-center justify-center w-6 h-6 text-xs font-semibold bg-white border rounded-full text-slate-800 border-slate-200 tabular-nums">
                 {n}
             </span>
             <p className="text-sm text-slate-700">{text}</p>
@@ -974,18 +1160,39 @@ function ArchitectureFlowSVG({
     const text = "#0f172a";
     const sub = "#475569";
 
-    const Box = ({ x, y, w, h, title, subtitle, dotColor }) => (
-        <g>
-            <rect x={x} y={y} width={w} height={h} rx="14" fill={boxFill} stroke={boxStroke} strokeWidth="2" />
-            <circle cx={x + 16} cy={y + 18} r="6" fill={dotColor} />
-            <text x={x + 30} y={y + 22} fontSize="14" fontWeight="700" fill={text}>
-                {title}
-            </text>
-            <text x={x + 16} y={y + 46} fontSize="12" fill={sub}>
-                {subtitle}
-            </text>
-        </g>
-    );
+    const Box = ({ x, y, w, h, title, subtitle, dotColor }) => {
+        // SVG doesn't have flexbox; approximate "dot + title inline, centered".
+        const r = 6;
+        const gap = 8;
+        const titleFontSize = 14;
+        // Empirical average character width in this SVG font size.
+        const estTitleW = Math.min(w - 32, Math.max(40, title.length * 7.2));
+        const totalW = r * 2 + gap + estTitleW;
+        const startX = x + Math.max(12, (w - totalW) / 2);
+
+        const titleY = y + 44; // baseline
+        const dotCy = titleY - 5; // visually aligns to text midline
+
+        return (
+            <g>
+                <rect x={x} y={y} width={w} height={h} rx="14" fill={boxFill} stroke={boxStroke} strokeWidth="2" />
+                <circle cx={startX + r} cy={dotCy} r={r} fill={dotColor} />
+                <text
+                    x={startX + r * 2 + gap}
+                    y={titleY}
+                    fontSize={titleFontSize}
+                    fontWeight="700"
+                    fill={text}
+                    textAnchor="start"
+                >
+                    {title}
+                </text>
+                <text x={x + w / 2} y={y + 68} fontSize="12" fill={sub} textAnchor="middle">
+                    {subtitle}
+                </text>
+            </g>
+        );
+    };
 
     const Arrow = ({ x1, y1, x2, y2, label }) => (
         <g>
@@ -998,69 +1205,116 @@ function ArchitectureFlowSVG({
         </g>
     );
 
-    // Layout: left-to-right pipeline.
-    const y = 40;
-    const h = 84;
-    const w1 = 210;
-    const w2 = 220;
-    const w3 = 210;
-    const w4 = 220;
-
-    const xA = 24;
-    const xV = xA + w1 + 50;
-    const xR = xV + w2 + 50;
-    const xB = xR + w3 + 50;
-
     return (
-        <svg viewBox="0 0 1000 200" className="w-full h-auto">
+        <svg viewBox="0 0 1000 320" className="w-full h-auto">
             <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                     <path d="M 0 0 L 10 5 L 0 10 z" fill={stroke} />
                 </marker>
             </defs>
 
-            <Box
-                x={xA}
-                y={y}
-                w={w1}
-                h={h}
-                title={`Attackers`}
-                subtitle={`${attackersOnline}/${attackers} online`}
-                dotColor={ok(attackersOnline === attackers && attackers > 0)}
-            />
-            <Arrow x1={xA + w1} y1={y + h / 2} x2={xV} y2={y + h / 2} label="lab-net traffic" />
+            {(() => {
+                // Two-row layout (3 nodes per row) to reduce horizontal scanning.
+                const h = 84;
+                const w = 230;
+                const gapX = 80;
 
-            <Box
-                x={xV}
-                y={y}
-                w={w2}
-                h={h}
-                title="Victim + Agent"
-                subtitle={capturing ? "Capturing packets" : victimOnline && agentOnline ? "No recent packets" : "Offline/degraded"}
-                dotColor={ok(victimOnline && agentOnline)}
-            />
-            <Arrow x1={xV + w2} y1={y + h / 2} x2={xR} y2={y + h / 2} label="flows (windows)" />
+                const x1 = 30;
+                const x2 = x1 + w + gapX;
+                const x3 = x2 + w + gapX;
 
-            <Box
-                x={xR}
-                y={y}
-                w={w3}
-                h={h}
-                title="Redis Stream"
-                subtitle={`${trafficActive ? "ingest active" : "ingest idle"} | backlog ${redisLen}`}
-                dotColor={ok(redisOnline)}
-            />
-            <Arrow x1={xR + w3} y1={y + h / 2} x2={xB} y2={y + h / 2} label="consume + infer" />
+                const yTop = 36;
+                const yBot = 190;
 
-            <Box
-                x={xB}
-                y={y}
-                w={w4}
-                h={h}
-                title="Backend + GNN + SSE"
-                subtitle={freshResults ? `fresh results${riskLevel ? ` (risk: ${riskLevel})` : ""}` : consumerConnected ? "connected, waiting" : "consumer disconnected"}
-                dotColor={ok(freshResults)}
-            />
+                const midYTop = yTop + h / 2;
+                const midYBot = yBot + h / 2;
+
+                const backendOrchestratorOk = true; // UI-level availability isn't tracked; assume running with page.
+                const attackersOk = attackersOnline === attackers && attackers > 0;
+                const victimOk = victimOnline && agentOnline;
+                const redisOk = redisOnline;
+                const backendOk = consumerConnected; // pipeline health signal for this stage
+                const uiOk = true;
+
+                return (
+                    <g>
+                        <Box
+                            x={x1}
+                            y={yTop}
+                            w={w}
+                            h={h}
+                            title="Backend Orchestrator"
+                            subtitle="Controls attackers via Docker exec"
+                            dotColor={ok(backendOrchestratorOk)}
+                        />
+                        <Arrow x1={x1 + w} y1={midYTop} x2={x2} y2={midYTop} label="commands" />
+
+                        <Box
+                            x={x2}
+                            y={yTop}
+                            w={w}
+                            h={h}
+                            title="Attackers"
+                            subtitle={`${attackersOnline}/${attackers} online`}
+                            dotColor={ok(attackersOk)}
+                        />
+                        <Arrow x1={x2 + w} y1={midYTop} x2={x3} y2={midYTop} label="traffic -> victim" />
+
+                        <Box
+                            x={x3}
+                            y={yTop}
+                            w={w}
+                            h={h}
+                            title="Victim + Agent"
+                            subtitle={capturing ? "Capturing packets" : victimOk ? "No recent packets" : "Offline/degraded"}
+                            dotColor={ok(victimOk)}
+                        />
+
+                        {/* Drop flows straight down from victim/agent into Redis to avoid cross-row diagonals. */}
+                        <Arrow x1={x3 + w / 2} y1={yTop + h} x2={x3 + w / 2} y2={yBot} label="flows (windows)" />
+
+                        <Box
+                            x={x3}
+                            y={yBot}
+                            w={w}
+                            h={h}
+                            title="Redis Stream"
+                            subtitle={`${trafficActive ? "ingest active" : "ingest idle"} | backlog ${redisLen}`}
+                            dotColor={ok(redisOk)}
+                        />
+
+                        <Box
+                            x={x2}
+                            y={yBot}
+                            w={w}
+                            h={h}
+                            title="Backend Inference"
+                            subtitle={
+                                freshResults
+                                    ? `fresh results${riskLevel ? ` (risk: ${riskLevel})` : ""}`
+                                    : consumerConnected
+                                        ? "connected, waiting"
+                                        : "consumer disconnected"
+                            }
+                            dotColor={ok(freshResults || backendOk)}
+                        />
+
+                        <Box
+                            x={x1}
+                            y={yBot}
+                            w={w}
+                            h={h}
+                            title="Frontend UI"
+                            subtitle="LiveLab updates from /api/lab/stream"
+                            dotColor={ok(uiOk)}
+                        />
+
+                        {/* Keep logical flow Redis -> Backend -> UI, but right-to-left to match row ordering. */}
+                        <Arrow x1={x3} y1={midYBot} x2={x2 + w} y2={midYBot} label="consume" />
+                        <Arrow x1={x2} y1={midYBot} x2={x1 + w} y2={midYBot} label="SSE stream" />
+                    </g>
+                );
+            })()}
         </svg>
     );
 }
