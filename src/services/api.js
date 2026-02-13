@@ -75,6 +75,18 @@ export const pcapAPI = {
 
 export const labAPI = {
     status: () => jsonFetch("/api/lab/status"),
+    setAttackers: (count) => {
+        const qs = new URLSearchParams({ count: String(count) });
+        return fetch(`${BASE}/api/lab/attackers/set?${qs.toString()}`, {
+            method: "POST",
+        }).then(async (r) => {
+            const body = await r.json();
+            if (!r.ok) {
+                throw new Error(body?.detail?.error || "Failed to set attacker count");
+            }
+            return body;
+        });
+    },
     streamStatus: (onMessage, onError, onOpen) => {
         const es = new EventSource(`${BASE}/api/lab/stream`);
         es.onopen = () => {
@@ -93,8 +105,11 @@ export const labAPI = {
         return es;
     },
 
-    startAttack: (type = "syn") =>
-        fetch(`${BASE}/api/lab/attack/start?type=${type}`, {
+    startAttack: (type = "syn", intensity = "medium", { pps = null, interval_ms = null } = {}) => {
+        const qs = new URLSearchParams({ type, intensity });
+        if (pps != null) qs.set("pps", String(pps));
+        if (interval_ms != null) qs.set("interval_ms", String(interval_ms));
+        return fetch(`${BASE}/api/lab/attack/start?${qs.toString()}`, {
             method: "POST",
         }).then(async (r) => {
             const body = await r.json();
@@ -102,7 +117,8 @@ export const labAPI = {
                 throw new Error(body?.detail?.error || "Failed to start attack");
             }
             return body;
-        }),
+        });
+    },
 
     stopAttack: () =>
         fetch(`${BASE}/api/lab/attack/stop`, {
@@ -115,8 +131,10 @@ export const labAPI = {
             return body;
         }),
 
-    startTraffic: (type = "mixed") =>
-        fetch(`${BASE}/api/lab/traffic/start?type=${type}`, {
+    startTraffic: (type = "mixed", intensity = "medium", { interval_ms = null } = {}) => {
+        const qs = new URLSearchParams({ type, intensity });
+        if (interval_ms != null) qs.set("interval_ms", String(interval_ms));
+        return fetch(`${BASE}/api/lab/traffic/start?${qs.toString()}`, {
             method: "POST",
         }).then(async (r) => {
             const body = await r.json();
@@ -124,7 +142,8 @@ export const labAPI = {
                 throw new Error(body?.detail?.error || "Failed to start normal traffic");
             }
             return body;
-        }),
+        });
+    },
 
     stopTraffic: () =>
         fetch(`${BASE}/api/lab/traffic/stop`, {

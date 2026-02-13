@@ -4,16 +4,37 @@ import { labAPI } from "../services/api";
 
 // Hide the last inference card after this many seconds without updates.
 const INFERENCE_HIDE_AFTER_S = 60;
+const SLOW_BACKEND_TOAST_MS = 2000;
 
 export default function LiveLab() {
     const [status, setStatus] = useState(null);
-    const [attackType, setAttackType] = useState("syn");
+    const [attackType, setAttackType] = useState("udp");
+    const [attackIntensity, setAttackIntensity] = useState("medium");
     const [trafficType, setTrafficType] = useState("mixed");
+    const [attackerCountInput, setAttackerCountInput] = useState("1");
+    const [attackersDirty, setAttackersDirty] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [nowMs, setNowMs] = useState(Date.now());
     const [streamConnected, setStreamConnected] = useState(false);
     const [lastStatusOkAtMs, setLastStatusOkAtMs] = useState(null);
+    const [toasts, setToasts] = useState([]);
+
+    function pushToast({ type = "info", title, message, ttlMs = 4500 }) {
+        const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const toast = { id, type, title, message };
+        setToasts((prev) => [...prev, toast]);
+        if (ttlMs && ttlMs > 0) {
+            window.setTimeout(() => {
+                setToasts((prev) => prev.filter((t) => t.id !== id));
+            }, ttlMs);
+        }
+        return id;
+    }
+
+    function dismissToast(id) {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+    }
 
     useEffect(() => {
         loadStatus();
@@ -72,65 +93,219 @@ export default function LiveLab() {
             setStatus(s);
             setError(null);
             setLastStatusOkAtMs(Date.now());
+            if (!attackersDirty) {
+                setAttackerCountInput(String(s?.attacker_count ?? 1));
+            }
         } catch (e) {
             setError("Failed to fetch lab status");
         }
     }
 
-    async function startAttack() {
+    async function applyAttackers() {
+        const n = Number(attackerCountInput);
+        if (!Number.isFinite(n) || n < 1) {
+            setError("Attackers must be a positive number");
+            return;
+        }
+        const desired = Math.min(10, Math.max(1, Math.floor(n)));
+        const pendingId = pushToast({
+            type: "info",
+            title: "Scaling attackers",
+            message: `Applying attacker count = ${desired}...`,
+            ttlMs: 0,
+        });
+        const slowTimer = window.setTimeout(() => {
+            pushToast({
+                type: "warning",
+                title: "Backend is busy",
+                message: "Scaling attackers is taking longer than expected...",
+                ttlMs: 4000,
+            });
+        }, SLOW_BACKEND_TOAST_MS);
         try {
             setLoading(true);
             setError(null);
-            await labAPI.startAttack(attackType);
+            await labAPI.setAttackers(desired);
+            setAttackersDirty(false);
             await loadStatus();
+            pushToast({
+                type: "success",
+                title: "Attackers updated",
+                message: `Attacker count set to ${desired}.`,
+            });
+        } catch (e) {
+            setError(e.message || "Unable to set attacker count");
+            pushToast({
+                type: "error",
+                title: "Scaling failed",
+                message: String(e.message || "Unable to set attacker count"),
+            });
+        } finally {
+            window.clearTimeout(slowTimer);
+            dismissToast(pendingId);
+            setLoading(false);
+        }
+    }
+
+    async function startAttack() {
+        const pendingId = pushToast({
+            type: "info",
+            title: "Starting attack",
+            message: `Starting ${attackType.toUpperCase()} (${attackIntensity})...`,
+            ttlMs: 0,
+        });
+        const slowTimer = window.setTimeout(() => {
+            pushToast({
+                type: "warning",
+                title: "Backend is busy",
+                message: "Starting the attack is taking longer than expected...",
+                ttlMs: 4000,
+            });
+        }, SLOW_BACKEND_TOAST_MS);
+        try {
+            setLoading(true);
+            setError(null);
+            await labAPI.startAttack(attackType, attackIntensity);
+            await loadStatus();
+            pushToast({
+                type: "success",
+                title: "Attack started",
+                message: `${attackType.toUpperCase()} started (${attackIntensity}).`,
+            });
         } catch (e) {
             setError(e.message || "Unable to start attack");
+            pushToast({
+                type: "error",
+                title: "Start attack failed",
+                message: String(e.message || "Unable to start attack"),
+            });
         } finally {
+            window.clearTimeout(slowTimer);
+            dismissToast(pendingId);
             setLoading(false);
         }
     }
 
     async function stopAttack() {
+        const pendingId = pushToast({
+            type: "info",
+            title: "Stopping attack",
+            message: "Sending stop request...",
+            ttlMs: 0,
+        });
+        const slowTimer = window.setTimeout(() => {
+            pushToast({
+                type: "warning",
+                title: "Backend is busy",
+                message: "Stopping the attack is taking longer than expected...",
+                ttlMs: 4000,
+            });
+        }, SLOW_BACKEND_TOAST_MS);
         try {
             setLoading(true);
             setError(null);
             await labAPI.stopAttack();
             await loadStatus();
+            pushToast({
+                type: "success",
+                title: "Attack stopped",
+                message: "Attack stopped.",
+            });
         } catch (e) {
             setError(e.message || "Unable to stop attack");
+            pushToast({
+                type: "error",
+                title: "Stop attack failed",
+                message: String(e.message || "Unable to stop attack"),
+            });
         } finally {
+            window.clearTimeout(slowTimer);
+            dismissToast(pendingId);
             setLoading(false);
         }
     }
 
     async function startTraffic() {
+        const pendingId = pushToast({
+            type: "info",
+            title: "Starting traffic",
+            message: `Starting ${trafficType.toUpperCase()}...`,
+            ttlMs: 0,
+        });
+        const slowTimer = window.setTimeout(() => {
+            pushToast({
+                type: "warning",
+                title: "Backend is busy",
+                message: "Starting normal traffic is taking longer than expected...",
+                ttlMs: 4000,
+            });
+        }, SLOW_BACKEND_TOAST_MS);
         try {
             setLoading(true);
             setError(null);
             await labAPI.startTraffic(trafficType);
             await loadStatus();
+            pushToast({
+                type: "success",
+                title: "Traffic started",
+                message: `${trafficType.toUpperCase()} started.`,
+            });
         } catch (e) {
             setError(e.message || "Unable to start normal traffic");
+            pushToast({
+                type: "error",
+                title: "Start traffic failed",
+                message: String(e.message || "Unable to start normal traffic"),
+            });
         } finally {
+            window.clearTimeout(slowTimer);
+            dismissToast(pendingId);
             setLoading(false);
         }
     }
 
     async function stopTraffic() {
+        const pendingId = pushToast({
+            type: "info",
+            title: "Stopping traffic",
+            message: "Sending stop request...",
+            ttlMs: 0,
+        });
+        const slowTimer = window.setTimeout(() => {
+            pushToast({
+                type: "warning",
+                title: "Backend is busy",
+                message: "Stopping normal traffic is taking longer than expected...",
+                ttlMs: 4000,
+            });
+        }, SLOW_BACKEND_TOAST_MS);
         try {
             setLoading(true);
             setError(null);
             await labAPI.stopTraffic();
             await loadStatus();
+            pushToast({
+                type: "success",
+                title: "Traffic stopped",
+                message: "Normal traffic stopped.",
+            });
         } catch (e) {
             setError(e.message || "Unable to stop normal traffic");
+            pushToast({
+                type: "error",
+                title: "Stop traffic failed",
+                message: String(e.message || "Unable to stop normal traffic"),
+            });
         } finally {
+            window.clearTimeout(slowTimer);
+            dismissToast(pendingId);
             setLoading(false);
         }
     }
 
     return (
         <DashboardLayout>
+            <ToastStack toasts={toasts} onDismiss={dismissToast} />
             <div className="mb-6">
                 <h2 className="mb-2 text-xl font-semibold text-slate-900">
                     Controlled Lab Simulation
@@ -150,18 +325,29 @@ export default function LiveLab() {
             <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
                 <Stat title="Redis" value={status?.redis ? "Connected" : "Down"} />
                 <Stat
-                    title="Agent"
+                    title="Victim + Agent"
                     value={
-                        status?.agent
-                            ? status?.agent_capturing
-                                ? "Capturing"
-                                : status?.agent_last_capture_age_s != null
-                                    ? `Online (Stale: ${Math.round(status.agent_last_capture_age_s)}s)`
-                                    : "Online (No Data)"
+                        status?.victim
+                            ? status?.agent
+                                ? status?.agent_capturing
+                                    ? "Online (Capturing)"
+                                    : status?.agent_last_capture_age_s != null
+                                        ? `Online (No Recent Data: ${Math.round(status.agent_last_capture_age_s)}s)`
+                                        : "Online (No Data)"
+                                : "Degraded (Agent Offline)"
                             : "Offline"
                     }
                 />
-                <Stat title="Victim" value={status?.victim ? "Online" : "Offline"} />
+                <Stat
+                    title="Attackers"
+                    value={
+                        status?.attacker_count != null
+                            ? `${status?.attacker_running_count ?? 0}/${status.attacker_count} online`
+                            : status?.attacker
+                                ? "Online"
+                                : "Offline"
+                    }
+                />
                 <Stat
                     title="Traffic Stream"
                     value={status?.traffic_stream ? "Active" : "Idle"}
@@ -197,6 +383,40 @@ export default function LiveLab() {
                     Controlled Lab Simulation
                 </h3>
 
+                <div className="p-4 mb-6 border rounded-lg border-slate-200 bg-slate-50">
+                    <p className="text-xs font-semibold text-slate-600">
+                        Lab Topology
+                    </p>
+                    <div className="flex flex-wrap items-end gap-3 mt-3">
+                        <div>
+                            <label className="text-xs font-medium text-slate-500">Attackers</label>
+                            <input
+                                type="number"
+                                min={1}
+                                max={10}
+                                step={1}
+                                value={attackerCountInput}
+                                onChange={(e) => {
+                                    setAttackerCountInput(e.target.value);
+                                    setAttackersDirty(true);
+                                }}
+                                disabled={loading}
+                                className="block w-28 px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-text disabled:cursor-not-allowed"
+                            />
+                        </div>
+                        <button
+                            onClick={applyAttackers}
+                            disabled={loading || !attackersDirty}
+                            className="px-4 py-2 text-sm font-medium text-white rounded-lg cursor-pointer bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Apply
+                        </button>
+                        <span className="text-xs text-slate-500">
+                            More attackers simulates distributed sources (traffic and attacks run from all attackers).
+                        </span>
+                    </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <div className="p-4 border rounded-lg border-slate-200">
                         <p className="text-xs font-semibold text-slate-600">
@@ -207,7 +427,7 @@ export default function LiveLab() {
                             <button
                                 onClick={startTraffic}
                                 disabled={status?.traffic_running || loading}
-                                className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-50"
+                                className="px-4 py-2 text-sm font-medium text-white rounded-lg cursor-pointer bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Start Traffic
                             </button>
@@ -215,7 +435,7 @@ export default function LiveLab() {
                             <button
                                 onClick={stopTraffic}
                                 disabled={!status?.traffic_running || loading}
-                                className="px-4 py-2 text-sm font-medium rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50"
+                                className="px-4 py-2 text-sm font-medium rounded-lg cursor-pointer text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Stop Traffic
                             </button>
@@ -227,8 +447,9 @@ export default function LiveLab() {
                                 value={trafficType}
                                 onChange={(e) => setTrafficType(e.target.value)}
                                 disabled={status?.traffic_running || loading}
-                                className="block px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300"
+                                className="block px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-pointer disabled:cursor-not-allowed"
                             >
+                                <option value="cic_benign">CICDDoS2019-like Benign Mix</option>
                                 <option value="mixed">Mixed (HTTP + Ping)</option>
                                 <option value="http">HTTP Only</option>
                                 <option value="ping">Ping Only</option>
@@ -251,7 +472,7 @@ export default function LiveLab() {
                     <button
                         onClick={startAttack}
                         disabled={status?.attack_running || loading}
-                        className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                        className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg cursor-pointer hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         Start Attack
                     </button>
@@ -259,7 +480,7 @@ export default function LiveLab() {
                     <button
                         onClick={stopAttack}
                         disabled={!status?.attack_running || loading}
-                        className="px-4 py-2 text-sm font-medium rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50"
+                        className="px-4 py-2 text-sm font-medium rounded-lg cursor-pointer text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         Stop Attack
                     </button>
@@ -271,18 +492,33 @@ export default function LiveLab() {
                         value={attackType}
                         onChange={(e) => setAttackType(e.target.value)}
                         disabled={status?.attack_running || loading}
-                        className="block px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300"
+                        className="block px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-pointer disabled:cursor-not-allowed"
                     >
-                        <option value="syn">SYN Flood</option>
                         <option value="udp">UDP Flood</option>
+                        <option value="dns">DNS Flood (UDP/53)</option>
+                        <option value="ntp">NTP Flood (UDP/123)</option>
+                        <option value="ssdp">SSDP Flood (UDP/1900)</option>
                         <option value="http">HTTP Flood</option>
-                        <option value="random">Random (Mixed)</option>
+                    </select>
+                </div>
+
+                <div className="mt-3">
+                    <label className="text-xs font-medium text-slate-500">Attack Load</label>
+                    <select
+                        value={attackIntensity}
+                        onChange={(e) => setAttackIntensity(e.target.value)}
+                        disabled={status?.attack_running || loading}
+                        className="block px-3 py-2 mt-1 text-sm bg-white border rounded-lg border-slate-300 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
                     </select>
                 </div>
 
                 {status?.attack_running && (
                     <p className="mt-4 text-sm text-red-600">
-                        Attack running ({status?.attack_type?.toUpperCase()}) — agent capturing live packets
+                        Attack running ({status?.attack_type?.toUpperCase()}, {status?.attack_intensity || "medium"}) — agent capturing live packets
                     </p>
                 )}
                 {!status?.attack_running && status?.agent && !status?.agent_capturing && (
@@ -348,6 +584,11 @@ export default function LiveLab() {
                 <p className="mb-4 text-xs text-slate-500">
                     Redis has data: {status?.redis_debug?.has_data ? "yes" : "no"} | stream size: {status?.redis_debug?.stream_length ?? 0}
                 </p>
+                {status?.attacker_names?.length > 0 && (
+                    <p className="mb-4 text-xs text-slate-500">
+                        Attackers: {status.attacker_names.join(", ")}
+                    </p>
+                )}
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div>
                         <p className="mb-2 text-xs font-semibold text-slate-700">
@@ -371,6 +612,17 @@ export default function LiveLab() {
                     </div>
                 </div>
             </div>
+
+            {/* ARCHITECTURE */}
+            <div className="p-6 mt-8 bg-white border shadow-sm border-slate-200 rounded-xl">
+                <h3 className="mb-2 text-sm font-semibold text-slate-900">
+                    Lab Architecture (How The Live Test Works)
+                </h3>
+                <p className="mb-6 text-xs text-slate-500">
+                    End-to-end view of the isolated Docker lab, capture pipeline, Redis ingest, and real-time inference stream used to validate the GNN model.
+                </p>
+                <ArchitectureDiagram status={status} />
+            </div>
         </DashboardLayout>
     );
 }
@@ -384,6 +636,40 @@ function Stat({ title, value }) {
             <p className="mt-2 text-lg font-semibold text-slate-900">
                 {value}
             </p>
+        </div>
+    );
+}
+
+function ToastStack({ toasts, onDismiss }) {
+    const styles = (type) => {
+        if (type === "success") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+        if (type === "error") return "border-red-200 bg-red-50 text-red-900";
+        if (type === "warning") return "border-amber-200 bg-amber-50 text-amber-900";
+        return "border-slate-200 bg-white text-slate-900";
+    };
+
+    return (
+        <div className="fixed z-50 flex flex-col gap-2 pointer-events-none top-4 right-4">
+            {toasts.map((t) => (
+                <div
+                    key={t.id}
+                    className={`pointer-events-auto w-[340px] max-w-[90vw] border rounded-xl shadow-sm ${styles(t.type)}`}
+                >
+                    <div className="flex items-start justify-between gap-3 p-3">
+                        <div>
+                            <p className="text-sm font-semibold">{t.title}</p>
+                            {t.message && <p className="mt-1 text-xs opacity-80">{t.message}</p>}
+                        </div>
+                        <button
+                            onClick={() => onDismiss(t.id)}
+                            className="px-2 py-1 text-xs font-medium rounded cursor-pointer bg-black/5 hover:bg-black/10"
+                            aria-label="Dismiss notification"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }
@@ -429,7 +715,7 @@ function LiveInferenceCard({ result, nowMs }) {
                         </span>
                         {stale && (
                             <span className="px-2 py-1 text-xs font-semibold border rounded-full bg-amber-50 text-amber-800 border-amber-200">
-                                Stale
+                                No Recent Updates
                             </span>
                         )}
                         {drift && (
@@ -532,5 +818,249 @@ function ProbabilityBar({ value, threshold }) {
                 </p>
             )}
         </div>
+    );
+}
+
+function ArchitectureDiagram({ status }) {
+    const attackers = status?.attacker_count ?? 1;
+    const attackersOnline = status?.attacker_running_count ?? (status?.attacker ? attackers : 0);
+    const redisLen = status?.redis_debug?.stream_length ?? 0;
+    const consumerConnected = Boolean(status?.consumer?.connected);
+    const capturing = Boolean(status?.agent_capturing);
+    const trafficActive = Boolean(status?.traffic_stream);
+    const victimOnline = Boolean(status?.victim);
+    const agentOnline = Boolean(status?.agent);
+    const redisOnline = Boolean(status?.redis);
+    const freshResults = Boolean(status?.streaming);
+    const riskLevel = status?.latest_results?.risk_level ? String(status.latest_results.risk_level) : null;
+
+    const dot = (ok) => (
+        <span
+            className={`inline-block w-2.5 h-2.5 rounded-full ${
+                ok ? "bg-emerald-500" : "bg-slate-300"
+            }`}
+        />
+    );
+
+    return (
+        <div>
+            {/* Mobile: stacked flow */}
+            <div className="grid grid-cols-1 gap-3 md:hidden">
+                <MiniNode
+                    title={`Attackers (${attackersOnline}/${attackers})`}
+                    meta="Generate traffic"
+                    left={dot(attackersOnline === attackers && attackers > 0)}
+                />
+                <MiniArrow label="lab-net traffic" />
+                <MiniNode
+                    title="Victim + Agent"
+                    meta={capturing ? "Capturing packets" : "No recent packets"}
+                    left={dot(victimOnline && agentOnline)}
+                />
+                <MiniArrow label="flows (windowed)" />
+                <MiniNode
+                    title={`Redis Stream (backlog ${redisLen})`}
+                    meta={trafficActive ? "Ingest active" : "Ingest idle"}
+                    left={dot(redisOnline)}
+                />
+                <MiniArrow label="XREADGROUP + ACK/DEL" />
+                <MiniNode
+                    title="Backend Consumer"
+                    meta={consumerConnected ? "Connected" : "Disconnected"}
+                    left={dot(consumerConnected)}
+                />
+                <MiniArrow label="GNN inference" />
+                <MiniNode
+                    title="Inference + SSE + UI"
+                    meta={freshResults ? `Fresh results${riskLevel ? ` (risk: ${riskLevel})` : ""}` : "Waiting for results"}
+                    left={dot(freshResults)}
+                />
+            </div>
+
+            {/* Desktop: connected architecture diagram */}
+            <div className="hidden md:block">
+                <div className="p-4 border rounded-xl border-slate-200 bg-slate-50">
+                    <ArchitectureFlowSVG
+                        attackers={attackers}
+                        attackersOnline={attackersOnline}
+                        victimOnline={victimOnline}
+                        agentOnline={agentOnline}
+                        capturing={capturing}
+                        redisOnline={redisOnline}
+                        redisLen={redisLen}
+                        trafficActive={trafficActive}
+                        consumerConnected={consumerConnected}
+                        freshResults={freshResults}
+                        riskLevel={riskLevel}
+                    />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-slate-500">
+                    <span className="inline-flex items-center gap-2">{dot(true)} healthy</span>
+                    <span className="inline-flex items-center gap-2">{dot(false)} inactive/degraded</span>
+                    <span className="text-slate-400">Arrows show the live data path used to test the GNN model.</span>
+                </div>
+            </div>
+
+            <details className="mt-6">
+                <summary className="text-sm cursor-pointer text-slate-700">
+                    What to expect when testing
+                </summary>
+                <div className="p-4 mt-3 text-sm border rounded-xl border-slate-200 bg-white text-slate-700">
+                    <p className="text-xs text-slate-500">
+                        Typical workflow:
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 mt-2 sm:grid-cols-2">
+                        <Step n="1" text="Scale attackers to simulate distributed sources." />
+                        <Step n="2" text="Start CICDDoS2019-like benign traffic to establish baseline flows." />
+                        <Step n="3" text="Start a CICDDoS2019-like DDoS mix and watch risk/probability change." />
+                        <Step n="4" text="Use Debug to confirm ingest, latest flow sample, and consumer health." />
+                    </div>
+                </div>
+            </details>
+        </div>
+    );
+}
+
+function MiniNode({ title, meta, left }) {
+    return (
+        <div className="flex items-start gap-3 p-4 bg-white border rounded-xl border-slate-200">
+            <div className="mt-0.5">{left}</div>
+            <div>
+                <p className="text-sm font-semibold text-slate-900">{title}</p>
+                <p className="mt-1 text-xs text-slate-500">{meta}</p>
+            </div>
+        </div>
+    );
+}
+
+function MiniArrow({ label }) {
+    return (
+        <div className="flex items-center gap-2 px-3">
+            <div className="w-0.5 h-6 bg-slate-300 rounded" />
+            <span className="text-[11px] font-semibold text-slate-500">{label}</span>
+        </div>
+    );
+}
+
+function Step({ n, text }) {
+    return (
+        <div className="flex items-start gap-3 p-3 border rounded-lg border-slate-200 bg-slate-50">
+            <span className="inline-flex items-center justify-center w-6 h-6 text-xs font-semibold text-slate-800 bg-white border border-slate-200 rounded-full tabular-nums">
+                {n}
+            </span>
+            <p className="text-sm text-slate-700">{text}</p>
+        </div>
+    );
+}
+
+function ArchitectureFlowSVG({
+    attackers,
+    attackersOnline,
+    victimOnline,
+    agentOnline,
+    capturing,
+    redisOnline,
+    redisLen,
+    trafficActive,
+    consumerConnected,
+    freshResults,
+    riskLevel,
+}) {
+    const ok = (v) => (v ? "#10b981" : "#cbd5e1"); // emerald-500 / slate-300
+    const stroke = "#94a3b8"; // slate-400
+    const boxFill = "#ffffff";
+    const boxStroke = "#cbd5e1";
+    const text = "#0f172a";
+    const sub = "#475569";
+
+    const Box = ({ x, y, w, h, title, subtitle, dotColor }) => (
+        <g>
+            <rect x={x} y={y} width={w} height={h} rx="14" fill={boxFill} stroke={boxStroke} strokeWidth="2" />
+            <circle cx={x + 16} cy={y + 18} r="6" fill={dotColor} />
+            <text x={x + 30} y={y + 22} fontSize="14" fontWeight="700" fill={text}>
+                {title}
+            </text>
+            <text x={x + 16} y={y + 46} fontSize="12" fill={sub}>
+                {subtitle}
+            </text>
+        </g>
+    );
+
+    const Arrow = ({ x1, y1, x2, y2, label }) => (
+        <g>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth="2.5" markerEnd="url(#arrow)" />
+            {label ? (
+                <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} fontSize="11" fontWeight="700" fill={sub} textAnchor="middle">
+                    {label}
+                </text>
+            ) : null}
+        </g>
+    );
+
+    // Layout: left-to-right pipeline.
+    const y = 40;
+    const h = 84;
+    const w1 = 210;
+    const w2 = 220;
+    const w3 = 210;
+    const w4 = 220;
+
+    const xA = 24;
+    const xV = xA + w1 + 50;
+    const xR = xV + w2 + 50;
+    const xB = xR + w3 + 50;
+
+    return (
+        <svg viewBox="0 0 1000 200" className="w-full h-auto">
+            <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill={stroke} />
+                </marker>
+            </defs>
+
+            <Box
+                x={xA}
+                y={y}
+                w={w1}
+                h={h}
+                title={`Attackers`}
+                subtitle={`${attackersOnline}/${attackers} online`}
+                dotColor={ok(attackersOnline === attackers && attackers > 0)}
+            />
+            <Arrow x1={xA + w1} y1={y + h / 2} x2={xV} y2={y + h / 2} label="lab-net traffic" />
+
+            <Box
+                x={xV}
+                y={y}
+                w={w2}
+                h={h}
+                title="Victim + Agent"
+                subtitle={capturing ? "Capturing packets" : victimOnline && agentOnline ? "No recent packets" : "Offline/degraded"}
+                dotColor={ok(victimOnline && agentOnline)}
+            />
+            <Arrow x1={xV + w2} y1={y + h / 2} x2={xR} y2={y + h / 2} label="flows (windows)" />
+
+            <Box
+                x={xR}
+                y={y}
+                w={w3}
+                h={h}
+                title="Redis Stream"
+                subtitle={`${trafficActive ? "ingest active" : "ingest idle"} | backlog ${redisLen}`}
+                dotColor={ok(redisOnline)}
+            />
+            <Arrow x1={xR + w3} y1={y + h / 2} x2={xB} y2={y + h / 2} label="consume + infer" />
+
+            <Box
+                x={xB}
+                y={y}
+                w={w4}
+                h={h}
+                title="Backend + GNN + SSE"
+                subtitle={freshResults ? `fresh results${riskLevel ? ` (risk: ${riskLevel})` : ""}` : consumerConnected ? "connected, waiting" : "consumer disconnected"}
+                dotColor={ok(freshResults)}
+            />
+        </svg>
     );
 }
