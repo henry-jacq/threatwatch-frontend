@@ -326,7 +326,7 @@ export default function LiveLab() {
             <ToastStack toasts={toasts} onDismiss={dismissToast} />
             <div className="mb-6">
                 <h2 className="mb-2 text-xl font-semibold text-slate-900">
-                    Controlled Lab Simulation
+                    Lab Simulation
                 </h2>
                 <p className="text-sm text-slate-500">
                     Generate normal traffic and attacks inside an isolated Docker lab and observe real-time inference
@@ -867,7 +867,7 @@ function LiveInferenceCard({ result, nowMs }) {
     const stale = ageS != null ? ageS > 20 : false;
 
     const avg = typeof result.avg_probability === "number" ? result.avg_probability : null;
-    const thr = typeof result.dynamic_threshold === "number" ? result.dynamic_threshold : null;
+    const thr = null;
 
     const risk = (result.risk_level || "unknown").toLowerCase();
     const riskLabel = risk === "high" ? "High Risk" : risk === "medium" ? "Medium Risk" : risk === "low" ? "Low Risk" : "Unknown";
@@ -909,16 +909,10 @@ function LiveInferenceCard({ result, nowMs }) {
                                 Drift Detected
                             </span>
                         )}
-                        {result.is_attack_dynamic && (
-                            <span className="px-2 py-1 text-xs font-semibold text-red-700 border border-red-200 rounded-full bg-red-50">
-                                Above Dynamic Threshold
-                            </span>
-                        )}
                     </div>
 
                     <p className="mt-2 text-sm font-semibold text-slate-900">
-                        Avg Probability: <span className="tabular-nums">{pct(avg)}</span>{" "}
-                        <span className="text-xs font-normal text-slate-500">(thr {pct(thr)})</span>
+                        Avg Probability: <span className="tabular-nums">{pct(avg)}</span>
                     </p>
 
                     <p className="mt-0.5 text-xs text-slate-500">
@@ -943,8 +937,10 @@ function LiveInferenceCard({ result, nowMs }) {
                         <p className="mt-1 font-mono text-sm tabular-nums text-slate-900">{fmt(avg)}</p>
                     </div>
                     <div className="p-3 border rounded-lg border-slate-200 bg-slate-50">
-                        <p className="text-xs font-medium text-slate-600">Dynamic Threshold (raw)</p>
-                        <p className="mt-1 font-mono text-sm tabular-nums text-slate-900">{fmt(thr)}</p>
+                        <p className="text-xs font-medium text-slate-600">Risk Score</p>
+                        <p className="mt-1 font-mono text-sm tabular-nums text-slate-900">
+                            {typeof result.risk_score === "number" ? result.risk_score.toFixed(4) : "—"}
+                        </p>
                     </div>
                 </div>
 
