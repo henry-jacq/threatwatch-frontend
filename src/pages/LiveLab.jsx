@@ -343,14 +343,14 @@ export default function LiveLab() {
             <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
                 <Stat title="Redis" value={status?.redis ? "Connected" : "Down"} />
                 <Stat
-                    title="Victim + Agent"
+                    title="Victim Agent"
                     value={
                         status?.victim
                             ? status?.agent
                                 ? status?.agent_capturing
                                     ? "Online (Capturing)"
                                     : status?.agent_last_capture_age_s != null
-                                        ? `Online (No Recent Data: ${Math.round(status.agent_last_capture_age_s)}s)`
+                                        ? `Online (Idle: ${Math.round(status.agent_last_capture_age_s)}s)`
                                         : "Online (No Data)"
                                 : "Degraded (Agent Offline)"
                             : "Offline"
@@ -409,8 +409,8 @@ export default function LiveLab() {
                                     <p className="text-xs font-semibold tracking-wide text-slate-700">
                                         Lab Topology
                                     </p>
-                                    <p className="text-xs text-slate-500">
-                                        Traffic and attacks run from all attacker containers.
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        Run traffic and attacks from all attacker containers.
                                     </p>
                                 </div>
                                 <span className="px-2 py-1 text-[11px] font-semibold border rounded-full bg-white text-slate-700 border-slate-200">
@@ -420,7 +420,7 @@ export default function LiveLab() {
 
                             <div className="flex flex-wrap items-end gap-3 mt-4">
                                 <div>
-                                    <label className="text-xs font-medium text-slate-600">Attackers</label>
+                                    <label className="text-xs font-medium text-slate-600">Attackers Count</label>
                                     <input
                                         type="number"
                                         min={1}
@@ -451,7 +451,7 @@ export default function LiveLab() {
                                     <p className="text-xs font-semibold tracking-wide text-slate-700">
                                         Normal Traffic
                                     </p>
-                                    <p className="mt-0.5 text-xs text-slate-500">
+                                    <p className="mt-1 text-xs text-slate-500">
                                         Baseline traffic to validate drift and false positives.
                                     </p>
                                 </div>
@@ -468,7 +468,7 @@ export default function LiveLab() {
 
                             <div className="grid grid-cols-1 gap-3 mt-4 sm:grid-cols-2">
                                 <div className="sm:col-span-2">
-                                    <label className="text-xs font-medium text-slate-600">Traffic Profile</label>
+                                    <label className="text-xs font-medium text-slate-600">Traffic Type</label>
                                     <select
                                         value={trafficType}
                                         onChange={(e) => setTrafficType(e.target.value)}
@@ -537,7 +537,7 @@ export default function LiveLab() {
                                 <p className="text-xs font-semibold tracking-wide text-slate-700">
                                     Attack Traffic
                                 </p>
-                                <p className="mt-0.5 text-xs text-slate-500">
+                                <p className="mt-1 text-xs text-slate-500">
                                     CICDDoS2019-style attack families (UDP services + HTTP).
                                 </p>
                             </div>
@@ -576,7 +576,7 @@ export default function LiveLab() {
 
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div>
-                                    <label className="text-xs font-medium text-slate-600">Load Preset</label>
+                                    <label className="text-xs font-medium text-slate-600">Attack Intensity</label>
                                     <select
                                         value={attackIntensity}
                                         onChange={(e) => setAttackIntensity(e.target.value)}
@@ -705,7 +705,7 @@ export default function LiveLab() {
 
             <div className="p-6 mt-8 bg-white border shadow-sm border-slate-200 rounded-xl">
                 <h3 className="mb-2 text-sm font-semibold text-slate-900">
-                    Debug (Redis + Capture)
+                    Agent Capture and Redis [DEBUG]
                 </h3>
                 <div className="flex flex-wrap items-center gap-2 mb-4 text-xs text-slate-600">
                     <span className="px-2 py-1 text-[11px] font-semibold border rounded-full bg-slate-50 text-slate-700 border-slate-200">
